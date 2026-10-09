@@ -20,11 +20,13 @@ class VersionUpdateRow extends StatefulWidget {
 class _VersionUpdateRowState extends State<VersionUpdateRow> {
   bool _checking = false;
 
-  /// 当前版本串：tag（v1.0.89）优先，否则 '1.0.88 (90)' 截到空格前。
+  /// 当前版本串：tag（v1.0.89）优先，否则用完整展示串（'1.0.89 (91)'，
+  /// 含构建号后缀——widget 测试 review_fix_b07 会直接找这个文本，不能截断）。
+  /// 版本比较用的 AppUpdate.parseVersion 能吃下带后缀的串，无需预先拆分。
   String get _currentVersion =>
       AppUpdate.buildTag.isNotEmpty
           ? AppUpdate.buildTag
-          : widget.fallbackVersionText.split(' ').first;
+          : widget.fallbackVersionText;
 
   void _snack(String text) {
     ScaffoldMessenger.of(
