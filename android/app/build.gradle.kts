@@ -138,6 +138,10 @@ dependencies {
     implementation("androidx.media3:media3-common:$media3Version")
     implementation("androidx.media3:media3-datasource:$media3Version")
 
+    // FileProvider（自更新安装）直接使用 androidx.core 的 API，显式声明，
+    // 不赌 Flutter embedding 或其他插件的传递依赖。
+    implementation("androidx.core:core-ktx:1.13.1")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.23.0")
 }

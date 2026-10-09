@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../widgets/home/home_design.dart';
+import '../widgets/version_update_row.dart';
 
 /// About page styled after PiliPlus: centered logo/name header followed by
 /// grouped card rows (version, source code, feedback, ...).
@@ -12,7 +13,7 @@ class AboutPage extends StatelessWidget {
   /// `version`. Without a package_info dependency the value is
   /// static, so test/about_version_test.dart parses the pubspec and fails the
   /// build check when the two drift apart after a version bump.
-  static const versionText = '1.0.88 (90)';
+  static const versionText = '1.0.89 (91)';
 
   /// Pixel width of the bundled logo (assets/images/app_logo.webp). The logo
   /// is displayed at 96dp, so it only needs re-decoding above 4× DPI; clamping
@@ -85,11 +86,8 @@ class AboutPage extends StatelessWidget {
           const SizedBox(height: 18),
           const _AboutCard(
             children: [
-              _AboutRow(
-                icon: Icons.commit_outlined,
-                title: '当前版本',
-                trailingText: AboutPage.versionText,
-              ),
+              // 版本行带点击检查更新（GitHub Releases），组件自持状态机。
+              VersionUpdateRow(fallbackVersionText: AboutPage.versionText),
             ],
           ),
           const SizedBox(height: 8),
@@ -156,14 +154,12 @@ class _AboutRow extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? subtitle;
-  final String? trailingText;
   final String? url;
 
   const _AboutRow({
     required this.icon,
     required this.title,
     this.subtitle,
-    this.trailingText,
     this.url,
   });
 
@@ -193,11 +189,7 @@ class _AboutRow extends StatelessWidget {
               subtitle!,
               style: theme.textTheme.labelMedium?.copyWith(color: outline),
             ),
-      trailing: trailingText != null
-          ? Text(trailingText!, style: TextStyle(fontSize: 13, color: outline))
-          : url != null
-          ? Icon(Icons.arrow_forward, size: 16, color: outline)
-          : null,
+      trailing: url != null ? Icon(Icons.arrow_forward, size: 16, color: outline) : null,
     );
   }
 

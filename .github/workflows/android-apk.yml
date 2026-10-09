@@ -2,27 +2,10 @@ name: Android APK
 
 on:
   push:
-    branches: [master]
-    paths:
-      - 'lib/**'
-      - 'android/**'
-      - 'native/**'
-      - 'rust/**'
-      - 'assets/**'
-      - 'pubspec.yaml'
-      - 'pubspec.lock'
-      - 'analysis_options.yaml'
-      - 'test/**'
-      - 'flutter_rust_bridge.yaml'
-      - 'scripts/build_rust_backend.sh'
-      - 'scripts/build_rust_backend.ps1'
-      - 'scripts/run_rust_host_tests.sh'
-      - 'scripts/run_rust_host_tests.ps1'
-      - 'scripts/check_native_alignment.cjs'
-      - 'scripts/generate_app_icons.py'
-      - 'scripts/verify_android_apk.py'
-      - 'scripts/verify_audio_cenc.cjs'
-      - '.github/workflows/android-apk.yml'
+    tags:
+      # Tag-driven builds: any tag starting with "v" (historical format is
+      # v1.0.x with no hyphen, so a literal "v-*" glob would never match).
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -281,8 +264,39 @@ jobs:
           flutter analyze --no-pub
           flutter test --no-pub --concurrency=2
 
+      # Tag-driven versioning: the pushed tag (vA.B.C) is the authoritative
+      # version of the build. versionName comes from the tag and versionCode is
+      # derived from it (major*1_000_000 + minor*10_000 + patch) so it stays
+      # monotonic across releases and above the legacy pubspec counter (90).
+      # Manual dispatch falls back to the pubspec version.
+      - name: Resolve the build version
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$(sed -nE 's/^version:[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+)\+.*/\1/p' pubspec.yaml)"
+          fi
+          version="${version%%-*}"
+          IFS='.' read -r major minor patch <<< "$version"
+          for part in "$major" "$minor" "$patch"; do
+            if ! [[ "$part" =~ ^[0-9]+$ ]]; then
+              echo "::error::Cannot derive a numeric version from '$version' (tag '$GITHUB_REF_NAME')." >&2
+              exit 1
+            fi
+          done
+          {
+            printf 'BUILD_NAME=%s\n' "$version"
+            printf 'BUILD_NUMBER=%d\n' $((major * 1000000 + minor * 10000 + patch))
+            printf 'BUILD_TAG=v%s\n' "$version"
+          } >> "$GITHUB_ENV"
+
       - name: Compile ARM64 release APK
-        run: flutter build apk --release --target-platform android-arm64 --no-pub
+        run: >-
+          flutter build apk --release --target-platform android-arm64 --no-pub
+          --build-name="$BUILD_NAME"
+          --build-number="$BUILD_NUMBER"
+          --dart-define=FQAPP_BUILD_TAG="$BUILD_TAG"
 
       - name: Test Android runtime boundaries
         working-directory: app/android
@@ -378,3 +392,86 @@ jobs:
       - name: Remove temporary signing file
         if: always()
         run: rm -f -- "$RUNNER_TEMP/fqapp-release.jks"
+
+  # 发布结果通知（飞书机器人）。一个 workflow 只允许这一个 notify job；
+  # needs 必须列出全部发布 job，新增 job 时同步维护。取消的 run 也会发通知
+  # （如需取消不发，把 always() 换成 !cancelled()）。
+  notify:
+    name: Notify workflow result
+    needs: [apk]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      # 汇总正文只算一次，各渠道共用
+      - name: Build result summary
+        id: summary
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          results = [info.get("result", "unknown") for info in needs.values()]
+          if "failure" in results:
+              overall = "failure"
+          elif "cancelled" in results:
+              overall = "cancelled"
+          else:
+              overall = "success"
+
+          lines = [
+              f"[{os.environ['REPO']}] {os.environ['REF']} - {overall}",
+              "",
+              f"Repository: {os.environ['REPO']}",
+              f"Ref: {os.environ['REF']}",
+              f"Commit: {os.environ['SHA']}",
+              "",
+              "Jobs:",
+          ]
+          lines += [f"- {job}: {info.get('result', 'unknown')}" for job, info in needs.items()]
+
+          print("text<<SUMMARY_EOF")
+          print("\n".join(lines))
+          print("SUMMARY_EOF")
+          PY
+
+      - name: Notify by Feishu
+        env:
+          FEISHU_WEB_HOOK: ${{ secrets.FEISHU_WEB_HOOK }}
+          FEISHU_SIGN: ${{ secrets.FEISHU_SIGN }}
+          SUMMARY: ${{ steps.summary.outputs.text }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, hmac, json, os, sys, time, urllib.error, urllib.request
+
+          timestamp = str(int(time.time()))
+          string_to_sign = f"{timestamp}\n{os.environ['FEISHU_SIGN']}"
+          sign = base64.b64encode(
+              hmac.new(string_to_sign.encode(), b"", hashlib.sha256).digest()
+          ).decode()
+
+          request = urllib.request.Request(
+              os.environ["FEISHU_WEB_HOOK"],
+              data=json.dumps({
+                  "timestamp": timestamp,
+                  "sign": sign,
+                  "msg_type": "text",
+                  "content": {"text": os.environ["SUMMARY"]},
+              }).encode(),
+              headers={"Content-Type": "application/json"},
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  status, body = response.status, response.read().decode()
+          except urllib.error.HTTPError as error:
+              status, body = error.code, error.read().decode()
+
+          print(f"HTTP {status}: {body}")
+          code = json.loads(body).get("code")
+          if code != 0:
+              sys.exit(f"Feishu notify failed: code={code}, body={body}")
+          PY
