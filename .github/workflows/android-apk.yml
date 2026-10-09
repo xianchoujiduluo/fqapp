@@ -27,8 +27,11 @@ env:
   # Certificate the release APK must carry. The built APK is compared against
   # this, so a package signed with the wrong key -- or not signed at all --
   # fails here instead of being published. The matching keystore is stored
-  # as a repository secret.
-  RELEASE_SIGNER_SHA256: 'e8471cd8a935fd71fd8197355b5558d245449d5bc8294f60f88616f60451c550'
+  # as a repository secret. This is the fork's own release identity (the
+  # upstream certificate e8471cd8... belongs to the upstream keystore, which a
+  # fork cannot access). Losing the keystore means losing the ability to ever
+  # update an installed build again.
+  RELEASE_SIGNER_SHA256: 'ff89d6a93e9a1584927b304b12b590e9c6664ec0eca377597646593001fc7db3'
   FQAPP_USE_MAVEN_MIRRORS: 'false'
   GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx1536m -XX:MaxMetaspaceSize=768m -XX:ReservedCodeCacheSize=256m" -Dorg.gradle.workers.max=2 -Dorg.gradle.daemon=false'
   CMAKE_BUILD_PARALLEL_LEVEL: '2'
@@ -212,9 +215,13 @@ jobs:
       # a hard failure here would make the workflow README recommends unusable
       # for exactly the audience most likely to run it. So the gate degrades:
       # with the secrets present the release identity is restored and pinned,
-      # without them the build continues and produces an UNSIGNED package. The
-      # pin is still enforced whenever a signature exists, so a package can
-      # never quietly ship under the public debug key.
+      # without them the build continues and produces an UNSIGNED package.
+      # An unsigned APK is NOT installable on Android 11+ (the package manager
+      # rejects it: "解析软件包时出现问题 / packageInfo is null"), so that branch
+      # yields a static-inspection artifact only -- configure the four secrets
+      # to get a package that installs. The pin is still enforced whenever a
+      # signature exists, so a package can never quietly ship under the public
+      # debug key.
       - name: Restore the release signing identity
         id: signing
         env:
@@ -228,7 +235,7 @@ jobs:
             [[ -n "${!name}" ]] || missing+=("$name")
           done
           if [ "${#missing[@]}" -gt 0 ]; then
-            printf '::warning::No release signing secrets (%s); building an UNSIGNED package. It installs for inspection only and cannot be upgraded onto a signed build.\n' \
+            printf '::warning::No release signing secrets (%s); building an UNSIGNED package. An unsigned APK cannot be installed on Android 11+ -- this artifact is for static inspection only. Configure RELEASE_KEYSTORE_BASE64/RELEASE_STORE_PASSWORD/RELEASE_KEY_ALIAS/RELEASE_KEY_PASSWORD to get an installable package.\n' \
               "$(IFS=,; printf '%s' "${missing[*]}")"
             printf 'has_release_signing=false\n' >> "$GITHUB_OUTPUT"
             exit 0
@@ -378,6 +385,7 @@ jobs:
       - name: Write download summary
         env:
           ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
+          HAS_RELEASE_SIGNING: ${{ steps.signing.outputs.has_release_signing }}
         run: |
           {
             printf '[下载 ARM64 APK 和校验报告](%s)\n\n' "$ARTIFACT_URL"
@@ -385,8 +393,13 @@ jobs:
             printf 'Rust core: `fqapi_core` (flutter_rust_bridge `%s`)\n\n' "$FRB_VERSION"
             printf 'Rust core library SHA-256: `%s`\n\n' \
               "$(sha256sum android/app/src/main/jniLibs/arm64-v8a/libfqapi_core.so | cut -d ' ' -f 1)"
-            printf 'Release signer SHA-256: `%s`\n\n' "$RELEASE_SIGNER_SHA256"
-            printf '使用正式 release 签名。已验证 Rust 核心库与 APK ZIP 的 16 KiB 对齐；设备播放仍需实测。\n'
+            if [ "$HAS_RELEASE_SIGNING" = "true" ]; then
+              printf 'Release signer SHA-256: `%s`\n\n' "$RELEASE_SIGNER_SHA256"
+              printf '使用正式 release 签名。已验证 Rust 核心库与 APK ZIP 的 16 KiB 对齐；设备播放仍需实测。\n'
+            else
+              printf 'Release signer: none (UNSIGNED)\n\n'
+              printf '未签名包在 Android 11+ 上无法安装（安装器报“解析软件包时出现问题”）；此产物仅供静态检查。\n'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary signing file
