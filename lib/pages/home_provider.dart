@@ -442,10 +442,12 @@ class HomeNotifier extends Notifier<HomeState> {
     _feedFor(state.tabIndex).lastVid = vid;
   }
 
-  Future<_FetchedFeed> _loadInitial(int tabIndex) async {
+  Future<_FetchedFeed> _loadInitial(int tabIndex, [_TabFeed? feed]) async {
     final name = tabs[tabIndex];
     if (name == '全部') return _loadAllInitial();
 
+    // 未显式传入时（单 tab 首刷），取该 tab 自己的已看集合。
+    feed ??= _feedFor(tabIndex);
     final kind = tabKinds[name]!;
     final tabType = tabTypes[name];
     if (tabType != null) {
@@ -494,9 +496,11 @@ class HomeNotifier extends Notifier<HomeState> {
   /// "全部" combines the novel recommendation stream with first pages for
   /// the other supported categories.
   Future<_FetchedFeed> _loadAllInitial() async {
-    final recommendationFuture = _attempt(_loadInitial(1));
+    // 「全部」混排流的所有子流共用全部 tab 的已看集合（用户就在这条流里看）。
+    final seen = _feedFor(0);
+    final recommendationFuture = _attempt(_loadInitial(1, seen));
     final videoFuture = _attempt(_searchLoader('短剧'));
-    final manjuFuture = _attempt(_loadAllManju());
+    final manjuFuture = _attempt(_loadAllManju(seen));
     final mangaFuture = _attempt(_mangaSearchLoader());
     final audioFuture = _attempt(_searchLoader('听书'));
 
@@ -570,11 +574,13 @@ class HomeNotifier extends Notifier<HomeState> {
   /// to that stream's cards, while search cells carry mostly uncoloured genre
   /// labels. The stream has no page cursor, so search still serves the pages
   /// after the first.
-  Future<_AllManjuGroup> _loadAllManju() async {
+  Future<_AllManjuGroup> _loadAllManju([_TabFeed? feed]) async {
     try {
+      // 「全部」混排流里的漫剧子流：用全部 tab 自己的已看集合去重。
+      final seen = feed ?? _feedFor(0);
       final page = await _homepageLoader(
         tabType: tabTypes['漫剧']!,
-        filterIds: _filterIdsParam(feed),
+        filterIds: _filterIdsParam(seen),
       );
       final items = _forceKind(page.items, 'manju');
       if (items.isNotEmpty) {
