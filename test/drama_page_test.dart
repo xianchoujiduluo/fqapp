@@ -60,7 +60,7 @@ HomeNotifier _notifier({
   List<String> categories = const [],
 }) => HomeNotifier(
   initialTabIndex: initialTabIndex,
-  homepageLoader: ({int tabType = 2, int offset = 0, String? sessionId}) async {
+  homepageLoader: ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
     return HomepagePage(
       items: [
         for (var index = 0; index < perTab; index++)
@@ -495,7 +495,7 @@ void main() {
             () => HomeNotifier(
               initialTabIndex: dramaTabIndex,
               homepageLoader:
-                  ({int tabType = 2, int offset = 0, String? sessionId}) async {
+                  ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                     if (failing) throw ApiException('短剧服务暂时不可用');
                     return const HomepagePage(
                       items: [],
@@ -1129,7 +1129,7 @@ void main() {
             () => HomeNotifier(
               initialTabIndex: dramaTabIndex,
               homepageLoader:
-                  ({int tabType = 2, int offset = 0, String? sessionId}) async {
+                  ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                     tabTypes.add(tabType);
                     return HomepagePage(
                       items: [_item('$tabType-0')],

@@ -45,7 +45,7 @@ void main() {
         final provider = NotifierProvider<HomeNotifier, HomeState>(
           () => HomeNotifier(
             homepageLoader:
-                ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+                ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                     HomepagePage(
                       items: [_item('book-$offset')],
                       nextOffset: offset + 1,
@@ -105,6 +105,7 @@ void main() {
                     int tabType = 2,
                     int offset = 0,
                     String? sessionId,
+                    String? filterIds,
                   }) async => const HomepagePage(
                     items: [],
                     nextOffset: null,
@@ -218,7 +219,7 @@ void main() {
       final provider = NotifierProvider<HomeNotifier, HomeState>(
         () => HomeNotifier(
           homepageLoader:
-              ({int tabType = 2, int offset = 0, String? sessionId}) async {
+              ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                 expect(tabType, 24);
                 homepageOffsets.add(offset);
                 if (!recommendationAvailable) throw StateError('unavailable');
@@ -277,7 +278,7 @@ void main() {
         final provider = NotifierProvider<HomeNotifier, HomeState>(
           () => HomeNotifier(
             homepageLoader:
-                ({int tabType = 2, int offset = 0, String? sessionId}) async {
+                ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                   // Manju prefers its own stream; return nothing for it so this
                   // test keeps exercising the search fallback and its cursor.
                   if (tabType == 24) {
@@ -340,7 +341,7 @@ void main() {
     final provider = NotifierProvider<HomeNotifier, HomeState>(
       () => HomeNotifier(
         homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+            ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                 const HomepagePage(
                   items: [],
                   nextOffset: null,
@@ -372,7 +373,7 @@ void main() {
         final provider = NotifierProvider<HomeNotifier, HomeState>(
           () => HomeNotifier(
             homepageLoader:
-                ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+                ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                     const HomepagePage(
                       items: [],
                       nextOffset: null,
@@ -420,7 +421,7 @@ void main() {
           final provider = NotifierProvider<HomeNotifier, HomeState>(
             () => HomeNotifier(
               homepageLoader:
-                  ({int tabType = 2, int offset = 0, String? sessionId}) async {
+                  ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                     // The combined feed reads the manju stream (24) for its
                     // manju group. Keep it empty here so this test tracks only
                     // the novel stream's cursor.
@@ -495,7 +496,7 @@ void main() {
         final provider = NotifierProvider<HomeNotifier, HomeState>(
           () => HomeNotifier(
             homepageLoader:
-                ({int tabType = 2, int offset = 0, String? sessionId}) async {
+                ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                   // Manju reads its own stream (24); leave it empty so the manju
                   // group falls back to search and this test keeps tracking the
                   // novel stream's cursor.
@@ -554,7 +555,7 @@ void main() {
       final provider = NotifierProvider<HomeNotifier, HomeState>(
         () => HomeNotifier(
           homepageLoader:
-              ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+              ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                   HomepagePage(
                     items: [_item('novel-$offset')],
                     nextOffset: offset + 1,
@@ -595,7 +596,7 @@ void main() {
       final provider = NotifierProvider<HomeNotifier, HomeState>(
         () => HomeNotifier(
           homepageLoader:
-              ({int tabType = 2, int offset = 0, String? sessionId}) =>
+              ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) =>
                   response.future,
           searchLoader: (query, {int page = 1}) async => const [],
         ),
@@ -614,7 +615,7 @@ void main() {
     final provider = NotifierProvider<HomeNotifier, HomeState>(
       () => HomeNotifier(
         homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+            ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                 throw StateError('recommendations unavailable'),
         searchLoader: (query, {int page = 1}) async => [
           SearchTab(title: '书籍', items: [_item('novel')]),
@@ -637,7 +638,7 @@ void main() {
     final provider = NotifierProvider<HomeNotifier, HomeState>(
       () => HomeNotifier(
         homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+            ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                 throw StateError('old backend'),
         searchLoader: (query, {int page = 1}) async {
           queries.add('$query:$page');
@@ -670,6 +671,7 @@ void main() {
       int tabType = 2,
       int offset = 0,
       String? sessionId,
+      String? filterIds,
     }) {
       final completer = Completer<HomepagePage>();
       requests.putIfAbsent(tabType, () => []).add(completer);
@@ -734,7 +736,7 @@ void main() {
     final provider = NotifierProvider<HomeNotifier, HomeState>(
       () => HomeNotifier(
         homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+            ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                 HomepagePage(
                   items: [_item('manju-1', kind: 'manju', tag: _newTag)],
                   nextOffset: null,
@@ -762,7 +764,7 @@ void main() {
     final provider = NotifierProvider<HomeNotifier, HomeState>(
       () => HomeNotifier(
         homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+            ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                 HomepagePage(
                   // Tag per stream so a drop in either group is visible.
                   items: [_item('stream-$tabType', tag: _newTag)],
@@ -806,7 +808,7 @@ void main() {
       final provider = NotifierProvider<HomeNotifier, HomeState>(
         () => HomeNotifier(
           homepageLoader:
-              ({int tabType = 2, int offset = 0, String? sessionId}) async {
+              ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                 if (tabType != 24) {
                   return const HomepagePage(
                     items: [],
@@ -872,7 +874,7 @@ void main() {
       final provider = NotifierProvider<HomeNotifier, HomeState>(
         () => HomeNotifier(
           homepageLoader:
-              ({int tabType = 2, int offset = 0, String? sessionId}) async {
+              ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                 if (tabType == 24) throw StateError('stream unavailable');
                 return const HomepagePage(
                   items: [],

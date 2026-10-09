@@ -9,7 +9,12 @@ import '../services/home_feed_cache.dart';
 import '../services/user_facing_error.dart';
 
 typedef HomepageLoader =
-    Future<HomepagePage> Function({int tabType, int offset, String? sessionId});
+    Future<HomepagePage> Function({
+      int tabType,
+      int offset,
+      String? sessionId,
+      String? filterIds,
+    });
 typedef SearchTabsLoader =
     Future<List<SearchTab>> Function(String query, {int page});
 typedef CategorySearchLoader = Future<List<SearchTab>> Function({int offset});
@@ -78,7 +83,7 @@ class _TabFeed {
   /// `onMoreDataLoaded` path, `Te` → `uf`), and is cleared right after.
   String? resumedVid;
 
-  void reset() {
+  void reset({bool keepSeen = false}) {
     items = [];
     offset = 0;
     sessionId = null;
@@ -87,7 +92,10 @@ class _TabFeed {
     searchOffsets = const {};
     manjuSearchExhausted = false;
     mangaSearchExhausted = false;
-    seen.clear();
+    // seen 保留场景：同 tab 的下拉刷新/重拉。上游不带 filter_ids 时不做已看
+    // 去重（实测重复率高达六成），seen 既驱动本地去重也生成 filter_ids，
+    // 刷新时必须跨轮次保留；切 tab/重建 feed 才清空。
+    if (!keepSeen) seen.clear();
     recommendExhausted = false;
     hasMore = true;
     loaded = false;
@@ -95,6 +103,15 @@ class _TabFeed {
     // deliberately kept — it tracks the card on screen across refreshes.
     resumedVid = null;
   }
+}
+
+/// seen 复合键（kind:id）→ 官方 filter_ids 参数：纯 id 逗号分隔，只带最近
+/// 100 个（控制 URL 长度，每 id 约 20 字符）。返回 null 表示没有已看记录。
+String? _filterIdsParam(_TabFeed feed) {
+  if (feed.seen.isEmpty) return null;
+  final ids = [for (final key in feed.seen) key.split(':').last];
+  final recent = ids.length > 100 ? ids.sublist(ids.length - 100) : ids;
+  return recent.join(',');
 }
 
 class _FetchedFeed {
@@ -255,7 +272,7 @@ class HomeNotifier extends Notifier<HomeState> {
   Future<void> load({bool manualRefresh = false}) async {
     final tabIndex = state.tabIndex;
     final generation = ++_generation;
-    final feed = _feedFor(tabIndex)..reset();
+    final feed = _feedFor(tabIndex)..reset(keepSeen: true);
     // Stale-while-revalidate: show the last rendered cards while the network
     // refresh runs. The cursors stay reset, so the response replaces page one.
     final snapshot = manualRefresh ? null : _feedCache?.load(tabIndex);
@@ -433,7 +450,10 @@ class HomeNotifier extends Notifier<HomeState> {
     final tabType = tabTypes[name];
     if (tabType != null) {
       try {
-        final page = await _homepageLoader(tabType: tabType);
+        final page = await _homepageLoader(
+          tabType: tabType,
+          filterIds: _filterIdsParam(feed),
+        );
         final items = _forceKind(page.items, kind);
         final nextOffset = page.nextOffset;
         final canAdvance = nextOffset != null && nextOffset > 0;
@@ -552,7 +572,10 @@ class HomeNotifier extends Notifier<HomeState> {
   /// after the first.
   Future<_AllManjuGroup> _loadAllManju() async {
     try {
-      final page = await _homepageLoader(tabType: tabTypes['漫剧']!);
+      final page = await _homepageLoader(
+        tabType: tabTypes['漫剧']!,
+        filterIds: _filterIdsParam(feed),
+      );
       final items = _forceKind(page.items, 'manju');
       if (items.isNotEmpty) {
         return (
@@ -592,6 +615,7 @@ class HomeNotifier extends Notifier<HomeState> {
           tabType: tabType,
           offset: feed.offset,
           sessionId: feed.sessionId,
+          filterIds: _filterIdsParam(feed),
         );
         final items = _forceKind(page.items, kind);
         final nextOffset = page.nextOffset;

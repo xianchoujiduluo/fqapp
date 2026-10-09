@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'pages/home_page.dart';
+import 'pages/home_provider.dart';
 import 'pages/cached_books_page.dart';
 import 'pages/drama_page.dart';
 import 'pages/library_page.dart';
@@ -231,16 +232,16 @@ class _AppBootstrapState extends State<AppBootstrap> {
   }
 }
 
-class RootShell extends StatefulWidget {
+class RootShell extends ConsumerStatefulWidget {
   final Future<void> Function()? backendStarter;
 
   const RootShell({super.key, this.backendStarter});
 
   @override
-  State<RootShell> createState() => _RootShellState();
+  ConsumerState<RootShell> createState() => _RootShellState();
 }
 
-class _RootShellState extends State<RootShell> {
+class _RootShellState extends ConsumerState<RootShell> {
   int _index = 0;
   bool _backendReady = false;
   String? _backendError;
@@ -435,7 +436,18 @@ class _RootShellState extends State<RootShell> {
                       child: NavigationBar(
                         selectedIndex: _index,
                         onDestinationSelected: (i) {
-                          if (i != _index) setState(() => _index = i);
+                          if (i != _index) {
+                            setState(() => _index = i);
+                            return;
+                          }
+                          // 再次点击当前 tab：短剧页触发刷新（同官方底栏重复
+                          // 点击语义）。seen 跨刷新保留，filter_ids 带上后
+                          // 上游不会再回重复内容。
+                          if (i == dramaTabIndex) {
+                            ref
+                                .read(dramaProvider.notifier)
+                                .load(manualRefresh: true);
+                          }
                         },
                         backgroundColor: Colors.transparent,
                         elevation: 0,

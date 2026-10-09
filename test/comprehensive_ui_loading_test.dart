@@ -94,7 +94,7 @@ void main() {
           homeProvider.overrideWith(
             () => HomeNotifier(
               homepageLoader:
-                  ({int tabType = 2, int offset = 0, String? sessionId}) async {
+                  ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                     if (tabType != 2) {
                       return const HomepagePage(
                         items: [],

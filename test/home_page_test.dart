@@ -37,6 +37,7 @@ void main() {
                       int tabType = 2,
                       int offset = 0,
                       String? sessionId,
+                      String? filterIds,
                     }) async => HomepagePage(
                       items: [
                         item(
@@ -89,6 +90,7 @@ void main() {
                       int tabType = 2,
                       int offset = 0,
                       String? sessionId,
+                      String? filterIds,
                     }) async => HomepagePage(
                       items: [],
                       nextOffset: null,
@@ -137,7 +139,7 @@ void main() {
           homeProvider.overrideWith(
             () => HomeNotifier(
               homepageLoader:
-                  ({int tabType = 2, int offset = 0, String? sessionId}) async {
+                  ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                     // Count the novel stream only: the combined feed also asks
                     // the manju stream (24) for its manju group, which is not
                     // what this retry assertion is about.
@@ -208,7 +210,7 @@ void main() {
           homeProvider.overrideWith(
             () => HomeNotifier(
               homepageLoader:
-                  ({int tabType = 2, int offset = 0, String? sessionId}) async {
+                  ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                     // Manju has its own stream (24) in the combined feed; keep
                     // it out of this test's cursor tracking.
                     if (tabType != 2) {
@@ -275,7 +277,7 @@ void main() {
           homeProvider.overrideWith(
             () => HomeNotifier(
               homepageLoader:
-                  ({int tabType = 2, int offset = 0, String? sessionId}) async {
+                  ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
                     // The combined feed also reads the manju stream (24) for its
                     // manju group; keep it empty so this test tracks the novel
                     // stream's cursor only.
@@ -354,6 +356,7 @@ void main() {
                       int tabType = 2,
                       int offset = 0,
                       String? sessionId,
+                      String? filterIds,
                     }) async => HomepagePage(
                       items: [
                         MediaItem(

@@ -45,6 +45,7 @@ void main() {
                     int tabType = 2,
                     int offset = 0,
                     String? sessionId,
+                    String? filterIds,
                   }) async => HomepagePage(
                     items: [for (var i = 0; i < count; i++) item(i)],
                     nextOffset: null,
@@ -120,6 +121,7 @@ void main() {
                     int tabType = 2,
                     int offset = 0,
                     String? sessionId,
+                    String? filterIds,
                   }) async => HomepagePage(
                     items: [for (var i = 0; i < 40; i++) item(i)],
                     nextOffset: null,

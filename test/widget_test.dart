@@ -17,12 +17,14 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     var attempts = 0;
     await tester.pumpWidget(
-      MaterialApp(
-        home: RootShell(
-          backendStarter: () async {
-            attempts++;
-            throw StateError(List.filled(80, '本地服务启动失败的详细信息').join('\n'));
-          },
+      ProviderScope(
+        child: MaterialApp(
+          home: RootShell(
+            backendStarter: () async {
+              attempts++;
+              throw StateError(List.filled(80, '本地服务启动失败的详细信息').join('\n'));
+            },
+          ),
         ),
       ),
     );

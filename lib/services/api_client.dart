@@ -1189,6 +1189,7 @@ class ApiClient {
     int tabType = 2,
     int offset = 0,
     String? sessionId,
+    String? filterIds,
   }) async {
     // 翻页时第一段只是用来开 cell 的：它的游标和视频流不是一回事，而且把第二段
     // 的 session 再传给 tab 接口会被上游拒掉（客户端表现为 SERVICE_ERROR）。所以
@@ -1203,6 +1204,7 @@ class ApiClient {
         cellId: cachedCellId,
         offset: offset,
         sessionId: sessionId,
+        filterIds: filterIds,
       );
       if (flow != null) return flow;
     }
@@ -1267,17 +1269,20 @@ class ApiClient {
       // 第一段刚开的 session 一并带上：后端据此把第二段钉在同一台设备上
       // （上游否则回 101116）。
       sessionId: sessionId ?? tab.page.sessionId,
+      filterIds: filterIds,
     );
     return flow ?? tab.page;
   }
 
   /// 走官方第二段（`bookmall/cell/change`）拉视频流；任何失败都返回 null，
-  /// 由调用方退回第一段。
+  /// 由调用方退回第一段。[filterIds] 是已看内容的逗号分隔 id（官方
+  /// `filter_ids` 参数，上游据此做服务端去重；实测带上后重复率归零）。
   Future<HomepagePage?> _seriesFlowPage({
     required int tabType,
     required String cellId,
     required int offset,
     String? sessionId,
+    String? filterIds,
   }) async {
     try {
       final url = _seriesFlowUrl(
@@ -1285,6 +1290,7 @@ class ApiClient {
         cellId: cellId,
         offset: offset,
         sessionId: sessionId,
+        filterIds: filterIds,
       );
       final r = await _get(url);
       final statusCode = r.statusCode;
@@ -1328,6 +1334,7 @@ class ApiClient {
     required String cellId,
     required int offset,
     String? sessionId,
+    String? filterIds,
   }) => _url('/api/v1/recommend/series-feed', {
     'cell_id': cellId,
     'tab_type': '$tabType',
@@ -1337,6 +1344,7 @@ class ApiClient {
     // 首屏 ChangeFilter(2)，翻页 GetMore(1)：官方 `c.java` 的 q()/m() 两个分支。
     'unlimited_selector_change_type': offset > 0 ? '1' : '2',
     if (sessionId != null && sessionId.isNotEmpty) 'session_id': sessionId,
+    if (filterIds != null && filterIds.isNotEmpty) 'filter_ids': filterIds,
   });
 
   /// 服务端频道表（F08）：官方 `GET /reading/bookapi/bookmall/tab/v`

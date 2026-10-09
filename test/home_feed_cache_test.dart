@@ -121,7 +121,7 @@ void main() {
       () => HomeNotifier(
         feedCache: cache,
         homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async {
+            ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
           networkStarted.complete();
           await releaseNetwork.future;
           return HomepagePage(
@@ -168,6 +168,7 @@ void main() {
               int tabType = 2,
               int offset = 0,
               String? sessionId,
+              String? filterIds,
             }) async => throw StateError('offline'),
         searchLoader:
             (query, {int page = 1}) async => throw StateError('offline'),
@@ -199,7 +200,7 @@ void main() {
         feedCache: cache,
         initialTabIndex: 6,
         homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+            ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                 HomepagePage(
                   // 'last' reappears in the response: the seen set must
                   // deduplicate it (the client-side equivalent of the
@@ -248,7 +249,7 @@ void main() {
         feedCache: cache,
         initialTabIndex: 6,
         homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+            ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                 HomepagePage(
                   items: [_item('fresh-1')],
                   nextOffset: 1,
@@ -279,7 +280,7 @@ void main() {
         feedCache: cache,
         initialTabIndex: 6,
         homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+            ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                 HomepagePage(
                   items: [_item('fresh-1')],
                   nextOffset: 1,
@@ -309,7 +310,7 @@ void main() {
         feedCache: cache,
         initialTabIndex: 6,
         homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+            ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                 HomepagePage(
                   items: [_item('fresh-1')],
                   nextOffset: 1,
@@ -338,7 +339,7 @@ void main() {
         feedCache: cache,
         initialTabIndex: 6,
         homepageLoader:
-            ({int tabType = 2, int offset = 0, String? sessionId}) async =>
+            ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async =>
                 HomepagePage(
                   items: [_item('fresh-1'), _item('fresh-2')],
                   nextOffset: 1,

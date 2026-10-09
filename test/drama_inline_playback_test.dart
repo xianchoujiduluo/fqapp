@@ -71,7 +71,7 @@ class _Session {
   static HomeNotifier _notifierFor(_Session session) => HomeNotifier(
     initialTabIndex: dramaTabIndex,
     homepageLoader:
-        ({int tabType = 2, int offset = 0, String? sessionId}) async {
+        ({int tabType = 2, int offset = 0, String? sessionId, String? filterIds}) async {
           return HomepagePage(
             items: [
               for (var index = 0; index < session.itemsPerTab; index++)
