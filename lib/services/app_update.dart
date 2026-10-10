@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'app_log.dart';
+
 /// 应用内自更新：GitHub Releases 检查 + 下载 + 拉起系统安装器。
 ///
 /// 版本基准：CI 构建 tag 时注入 `FQAPP_BUILD_TAG`（如 v1.0.89）；本地构建
@@ -55,8 +57,26 @@ class AppUpdate {
     return false;
   }
 
-  /// 拉最新 Release 信息。无 arm64 APK 资产或网络失败抛 [UpdateException]。
+  /// 拉最新 Release 信息。
+  ///
+  /// 优先官方 API（数据最全）；**被匿名限流或网络不可达时回退 releases.atom**
+  /// ——该端点不是 API，无鉴权也无每 IP 六十次/小时的配额，国内挂着共享出口
+  /// VPN 时 API 几乎必然 403（实测），而 atom 正常（实测）。两条通道都失败才
+  /// 抛 [UpdateException]，错误里同时带上两边的原因。
   static Future<ReleaseInfo> fetchLatest() async {
+    try {
+      return await _fetchLatestViaApi();
+    } on UpdateException catch (apiError) {
+      AppLog.w('update', 'GitHub API 不可用（${apiError.message}），回退 releases.atom');
+      try {
+        return await _fetchLatestViaAtom();
+      } on UpdateException catch (atomError) {
+        throw UpdateException('检查更新失败：${apiError.message}；备用通道：${atomError.message}');
+      }
+    }
+  }
+
+  static Future<ReleaseInfo> _fetchLatestViaApi() async {
     http.Response resp;
     try {
       resp = await http
@@ -68,10 +88,109 @@ class AppUpdate {
     } catch (e) {
       throw UpdateException('网络请求失败：$e');
     }
+    if (resp.statusCode == 403) {
+      throw UpdateException('GitHub API 限流（匿名 60 次/小时/IP）');
+    }
+    if (resp.statusCode == 404) {
+      throw UpdateException('还没有发布 Release');
+    }
     if (resp.statusCode != 200) {
-      throw UpdateException('GitHub 返回 ${resp.statusCode}（还没有 Release 或被限流）');
+      throw UpdateException('GitHub API 返回 HTTP ${resp.statusCode}');
     }
     return ReleaseInfo.fromJson(_decodeJson(resp.body));
+  }
+
+  /// 备用通道：`releases.atom`（无鉴权、无 API 配额）。
+  ///
+  /// atom 不含资产信息，所以下载地址按本仓库发布资产的固定命名约定构造
+  /// （`fqapp-<版本>-arm64.apk`），并用 HEAD 验证确实存在、顺带取字节数。
+  ///
+  /// 字段提取不依赖 HTML/XML 解析器对非标准标签的宽容度：feed 是 GitHub
+  /// 机器生成的稳定结构（`<entry>` 无属性、首块即最新），按块取字段更可预测。
+  static Future<ReleaseInfo> _fetchLatestViaAtom() async {
+    http.Response resp;
+    try {
+      resp = await http
+          .get(Uri.parse('https://github.com/$_repo/releases.atom'))
+          .timeout(const Duration(seconds: 15));
+    } catch (e) {
+      throw UpdateException('网络请求失败：$e');
+    }
+    if (resp.statusCode != 200) {
+      throw UpdateException('HTTP ${resp.statusCode}');
+    }
+    final blocks = resp.body.split('<entry>');
+    if (blocks.length < 2) {
+      throw UpdateException('解析不到版本号（可能还没发布 Release）');
+    }
+    final latest = blocks[1];
+    final tag =
+        RegExp(
+          r'<title>([^<]+)</title>',
+        ).firstMatch(latest)?.group(1)?.trim() ??
+        '';
+    if (tag.isEmpty) {
+      throw UpdateException('解析不到版本号（可能还没发布 Release）');
+    }
+    final rawNotes =
+        RegExp(
+          r'<content[^>]*>([\s\S]*?)</content>',
+        ).firstMatch(latest)?.group(1) ??
+        '';
+    final version = tag.startsWith('v') ? tag.substring(1) : tag;
+    final apkUrl =
+        'https://github.com/$_repo/releases/download/$tag/fqapp-$version-arm64.apk';
+    var apkSize = 0;
+    try {
+      final head = await http
+          .head(Uri.parse(apkUrl))
+          .timeout(const Duration(seconds: 15));
+      if (head.statusCode != 200) {
+        throw UpdateException('$tag 没有可下载的 arm64 安装包（HTTP ${head.statusCode}）');
+      }
+      apkSize = int.tryParse(head.headers['content-length'] ?? '') ?? 0;
+    } on UpdateException {
+      rethrow;
+    } catch (e) {
+      throw UpdateException('校验安装包失败：$e');
+    }
+    return ReleaseInfo(
+      tag: tag,
+      notes: _plainText(rawNotes),
+      apkUrl: apkUrl,
+      apkName: 'fqapp-$version-arm64.apk',
+      apkSize: apkSize,
+    );
+  }
+
+  /// atom 的 `content` 是**转义后**的 HTML，必须先反转义再剥标签，否则
+  /// `&lt;h2&gt;` 洗不掉（`&amp;` 放最后，避免二次解码）。
+  static String _plainText(String html) {
+    if (html.trim().isEmpty) return '';
+    var text = html;
+    const entities = {
+      '&lt;': '<',
+      '&gt;': '>',
+      '&quot;': '"',
+      '&#39;': "'",
+      '&nbsp;': ' ',
+    };
+    for (final entity in entities.entries) {
+      text = text.replaceAll(entity.key, entity.value);
+    }
+    text = text
+        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
+        .replaceAll(
+          RegExp(r'</(p|li|h[1-6]|div|ul|ol)>', caseSensitive: false),
+          '\n',
+        )
+        .replaceAll(RegExp(r'<[^>]+>'), '')
+        .replaceAll('&amp;', '&');
+    return text
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .join('\n');
   }
 
   /// 流式下载 APK 到临时目录（cache/updates/），返回文件绝对路径。
