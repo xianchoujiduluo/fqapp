@@ -445,8 +445,8 @@ class _RootShellState extends ConsumerState<RootShell> {
                             return;
                           }
                           // 再次点击当前 tab：短剧页触发刷新（同官方底栏重复
-                          // 点击语义）。seen 跨刷新保留，filter_ids 带上后
-                          // 上游不会再回重复内容。
+                          // 点击语义）。重复内容由本地 seen 去重压制；上游
+                          // 无视 filter_ids，去重滤空时 _applyFetched 兜底。
                           //
                           // ⚠️ 这里必须用**底部导航的下标**（首页 0 / 短剧 1 /
                           // 书架 2 / 我的 3），与 dramaTabIndex（短剧页内部

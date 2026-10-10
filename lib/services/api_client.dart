@@ -1276,7 +1276,8 @@ class ApiClient {
 
   /// 走官方第二段（`bookmall/cell/change`）拉视频流；任何失败都返回 null，
   /// 由调用方退回第一段。[filterIds] 是已看内容的逗号分隔 id（官方
-  /// `filter_ids` 参数，上游据此做服务端去重；实测带上后重复率归零）。
+  /// `filter_ids` 参数）。⚠️ 实测上游对匿名设备流不认这个参数（逗号/括号
+  /// 格式都会回弹过滤集内的内容）；保留发送，但去重实际由客户端 seen 兜底。
   Future<HomepagePage?> _seriesFlowPage({
     required int tabType,
     required String cellId,

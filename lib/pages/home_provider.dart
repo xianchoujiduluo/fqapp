@@ -92,9 +92,9 @@ class _TabFeed {
     searchOffsets = const {};
     manjuSearchExhausted = false;
     mangaSearchExhausted = false;
-    // seen 保留场景：同 tab 的下拉刷新/重拉。上游不带 filter_ids 时不做已看
-    // 去重（实测重复率高达六成），seen 既驱动本地去重也生成 filter_ids，
-    // 刷新时必须跨轮次保留；切 tab/重建 feed 才清空。
+    // seen 保留场景：同 tab 的下拉刷新/重拉。上游对 filter_ids 实测不生效
+    // （逗号/括号格式都漏，见 _filterIdsParam 注释），跨刷新保留 seen 靠
+    // 本地去重压重复；去重把整页滤空时由 _applyFetched 兜底，不会卡死。
     if (!keepSeen) seen.clear();
     recommendExhausted = false;
     hasMore = true;
@@ -106,7 +106,11 @@ class _TabFeed {
 }
 
 /// seen 复合键（kind:id）→ 官方 filter_ids 参数：纯 id 逗号分隔，只带最近
-/// 100 个（控制 URL 长度，每 id 约 20 字符）。返回 null 表示没有已看记录。
+/// 100 个（控制 URL 长度）。返回 null 表示没有已看记录。
+///
+/// ⚠️ 实测（探针）：上游对匿名设备流**不生效**——逗号/括号两种格式带的
+/// 过滤集都会在响应里回弹（3/4、2/5 重叠）。保留发送是赌它在某些会话/登录
+/// 态下可能生效；真正兜底不重复的是 _applyFetched 的本地去重与清 seen 回退。
 String? _filterIdsParam(_TabFeed feed) {
   if (feed.seen.isEmpty) return null;
   final ids = [for (final key in feed.seen) key.split(':').last];
@@ -778,10 +782,22 @@ class HomeNotifier extends Notifier<HomeState> {
     _FetchedFeed fetched, {
     required bool replace,
   }) {
-    final fresh = <MediaItem>[];
+    var fresh = <MediaItem>[];
     for (final item in fetched.items) {
       final key = '${item.kind}:${item.id}';
       if (item.id.isNotEmpty && feed.seen.add(key)) fresh.add(item);
+    }
+    // 去重兜底（防卡死）：上游内容池很小且会无视 filter_ids 回收老内容
+    // （实测逗号/括号两种格式都漏），整页都被 seen 滤空时，刷新会把列表
+    // 置成「items 空 + hasMore true」——短剧页就永远停在「正在刷新内容」
+    // 的转圈上。此时清空 seen 原样展示本页：宁可重复，不可空白。
+    // 仅限 replace（首屏/刷新）；翻页 append 滤空时列表本有内容，不处理。
+    if (replace && fresh.isEmpty && fetched.items.isNotEmpty) {
+      feed.seen.clear();
+      fresh = fetched.items.where((item) => item.id.isNotEmpty).toList();
+      for (final item in fresh) {
+        feed.seen.add('${item.kind}:${item.id}');
+      }
     }
     feed
       ..items = replace ? fresh : [...feed.items, ...fresh]
