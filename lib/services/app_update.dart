@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_log.dart';
 
@@ -22,8 +23,43 @@ class AppUpdate {
   /// CI 注入的构建 tag；空串表示本地构建（未注入）。
   static const buildTag = String.fromEnvironment('FQAPP_BUILD_TAG');
 
-  /// 更新源仓库。跟随"打 v* tag 触发构建"的 origin fork；要切上游仓库改这里。
-  static const _repo = 'xianchoujiduluo/fqapp';
+  /// 默认更新源：本仓库的 GitHub 地址。这一串会长驻显示在关于页，
+  /// 用户可改成内网自建源（内网环境访问不到 GitHub 时用）。
+  static const defaultSource = 'https://github.com/xianchoujiduluo/fqapp';
+
+  static const _sourceKey = 'update_source_v1';
+
+  /// 当前更新源地址；未设置时返回 [defaultSource]。
+  static Future<String> getSource() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_sourceKey)?.trim();
+    return (saved == null || saved.isEmpty) ? defaultSource : saved;
+  }
+
+  /// 保存更新源。等于默认值就删掉自定义项，这样默认值将来变了能跟着走。
+  static Future<void> setSource(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || trimmed == defaultSource) {
+      await prefs.remove(_sourceKey);
+    } else {
+      await prefs.setString(_sourceKey, trimmed);
+    }
+  }
+
+  /// 从更新源地址解析 GitHub 的 `owner/repo`；不是 GitHub 地址返回 null
+  /// （那种情况按**自建更新源**处理：读该地址下的 `update.json`）。
+  static String? githubRepoOf(String source) {
+    final match = RegExp(
+      r'^(?:https?://)?(?:api\.)?github\.com/(?:repos/)?([^/\s]+)/([^/\s?#]+)',
+    ).firstMatch(source.trim());
+    if (match == null) return null;
+    var repo = match.group(2)!;
+    if (repo.endsWith('.git')) {
+      repo = repo.substring(0, repo.length - 4);
+    }
+    return '${match.group(1)}/$repo';
+  }
 
   /// 从展示串解析语义化版本三元组：'v1.0.89' / '1.0.88 (90)' → [1, 0, 88]。
   /// 解析不了返回 null（视为无法比较，按"无更新"处理）。
@@ -57,31 +93,114 @@ class AppUpdate {
     return false;
   }
 
-  /// 拉最新 Release 信息。
+  /// 拉最新 Release 信息，按当前更新源选择通道：
   ///
-  /// 优先官方 API（数据最全）；**被匿名限流或网络不可达时回退 releases.atom**
-  /// ——该端点不是 API，无鉴权也无每 IP 六十次/小时的配额，国内挂着共享出口
-  /// VPN 时 API 几乎必然 403（实测），而 atom 正常（实测）。两条通道都失败才
-  /// 抛 [UpdateException]，错误里同时带上两边的原因。
+  /// - 源是 GitHub 地址：优先官方 API（数据最全），**被匿名限流或网络不可达时
+  ///   回退 releases.atom**（非 API 端点，无鉴权与每 IP 六十次/小时的配额；国内
+  ///   挂共享出口 VPN 时 API 几乎必然 403，而 atom 正常）；
+  /// - 源是其他地址：按**自建更新源**处理，读该地址下的 `update.json`。
+  ///
+  /// 说明：内网源常用 `http://`，而 `network_security_config.xml` 只放行
+  /// 127.0.0.1 的明文流量——那条策略由 Java 层（OkHttp/URLConnection/WebView）
+  /// 执行，本文件的 `package:http` 走 dart:io 自有 socket，不受它约束。
   static Future<ReleaseInfo> fetchLatest() async {
+    final source = await getSource();
+    final repo = githubRepoOf(source);
+    if (repo == null) {
+      AppLog.w('update', '使用自建更新源：$source');
+      return _fetchLatestViaManifest(source);
+    }
     try {
-      return await _fetchLatestViaApi();
+      return await _fetchLatestViaApi(repo);
     } on UpdateException catch (apiError) {
       AppLog.w('update', 'GitHub API 不可用（${apiError.message}），回退 releases.atom');
       try {
-        return await _fetchLatestViaAtom();
+        return await _fetchLatestViaAtom(repo);
       } on UpdateException catch (atomError) {
         throw UpdateException('检查更新失败：${apiError.message}；备用通道：${atomError.message}');
       }
     }
   }
 
-  static Future<ReleaseInfo> _fetchLatestViaApi() async {
+  /// 自建更新源：`<源地址>/update.json`。
+  ///
+  /// 清单字段：`tag`（必填）、`apk`（必填，可为相对清单地址的文件名）、
+  /// 选填 `notes` / `size` / `sha256`。`apk` 是相对路径时按清单所在目录拼接。
+  static Future<ReleaseInfo> _fetchLatestViaManifest(String source) async {
+    final trimmed = source.trim();
+    final manifestUrl = trimmed.endsWith('.json')
+        ? trimmed
+        : '${trimmed.endsWith('/') ? trimmed : '$trimmed/'}update.json';
+    // 相对 apk 以清单所在目录为基准。
+    final root = manifestUrl.substring(0, manifestUrl.lastIndexOf('/') + 1);
+
+    http.Response resp;
+    try {
+      resp = await http
+          .get(Uri.parse(manifestUrl))
+          .timeout(const Duration(seconds: 15));
+    } catch (e) {
+      throw UpdateException('网络请求失败：$e');
+    }
+    if (resp.statusCode == 404) {
+      throw UpdateException('更新源没有 update.json（$manifestUrl）');
+    }
+    if (resp.statusCode != 200) {
+      throw UpdateException('更新源返回 HTTP ${resp.statusCode}');
+    }
+
+    final Map<String, dynamic> json;
+    try {
+      final decoded = _decodeJson(resp.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('顶层不是 JSON 对象');
+      }
+      json = decoded;
+    } catch (e) {
+      throw UpdateException('update.json 解析失败：$e');
+    }
+
+    final tag = (json['tag'] as String?)?.trim() ?? '';
+    if (tag.isEmpty) {
+      throw UpdateException('update.json 缺少 tag 字段');
+    }
+    final apkField = (json['apk'] as String?)?.trim() ?? '';
+    if (apkField.isEmpty) {
+      throw UpdateException('update.json 缺少 apk 字段');
+    }
+    final apkUrl = apkField.startsWith('http') ? apkField : '$root$apkField';
+    var apkSize = (json['size'] as num?)?.toInt() ?? 0;
+    if (apkSize <= 0) {
+      apkSize = await _probeSize(apkUrl);
+    }
+    return ReleaseInfo(
+      tag: tag,
+      notes: (json['notes'] as String?)?.trim(),
+      apkUrl: apkUrl,
+      apkName: apkField.split('/').last,
+      apkSize: apkSize,
+    );
+  }
+
+  /// 探测安装包字节数；失败给 0（大小只是展示项，不是硬性校验）。
+  static Future<int> _probeSize(String url) async {
+    try {
+      final head = await http
+          .head(Uri.parse(url))
+          .timeout(const Duration(seconds: 15));
+      if (head.statusCode != 200) return 0;
+      return int.tryParse(head.headers['content-length'] ?? '') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<ReleaseInfo> _fetchLatestViaApi(String repo) async {
     http.Response resp;
     try {
       resp = await http
           .get(
-            Uri.parse('https://api.github.com/repos/$_repo/releases/latest'),
+            Uri.parse('https://api.github.com/repos/$repo/releases/latest'),
             headers: {'Accept': 'application/vnd.github+json'},
           )
           .timeout(const Duration(seconds: 15));
@@ -107,11 +226,11 @@ class AppUpdate {
   ///
   /// 字段提取不依赖 HTML/XML 解析器对非标准标签的宽容度：feed 是 GitHub
   /// 机器生成的稳定结构（`<entry>` 无属性、首块即最新），按块取字段更可预测。
-  static Future<ReleaseInfo> _fetchLatestViaAtom() async {
+  static Future<ReleaseInfo> _fetchLatestViaAtom(String repo) async {
     http.Response resp;
     try {
       resp = await http
-          .get(Uri.parse('https://github.com/$_repo/releases.atom'))
+          .get(Uri.parse('https://github.com/$repo/releases.atom'))
           .timeout(const Duration(seconds: 15));
     } catch (e) {
       throw UpdateException('网络请求失败：$e');
@@ -139,7 +258,7 @@ class AppUpdate {
         '';
     final version = tag.startsWith('v') ? tag.substring(1) : tag;
     final apkUrl =
-        'https://github.com/$_repo/releases/download/$tag/fqapp-$version-arm64.apk';
+        'https://github.com/$repo/releases/download/$tag/fqapp-$version-arm64.apk';
     var apkSize = 0;
     try {
       final head = await http

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../widgets/home/home_design.dart';
+import '../widgets/update_source_row.dart';
 import '../widgets/version_update_row.dart';
 
 /// About page styled after PiliPlus: centered logo/name header followed by
@@ -86,8 +87,11 @@ class AboutPage extends StatelessWidget {
           const SizedBox(height: 18),
           const _AboutCard(
             children: [
-              // 版本行带点击检查更新（GitHub Releases），组件自持状态机。
+              // 版本行带点击检查更新（GitHub Releases 或自建更新源），组件自持状态机。
               VersionUpdateRow(fallbackVersionText: AboutPage.versionText),
+              Divider(height: 1, indent: 68),
+              // 更新源地址常驻显示，点击可改（默认 GitHub，内网可换成自建源）。
+              UpdateSourceRow(),
             ],
           ),
           const SizedBox(height: 8),
