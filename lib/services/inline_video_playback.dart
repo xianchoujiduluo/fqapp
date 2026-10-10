@@ -218,6 +218,12 @@ class InlineVideoPlayback {
   /// Otherwise any earlier activation is invalidated first: its directory
   /// request, its `create` and its subscriptions can no longer touch this
   /// session, and the previous player is parked (not destroyed).
+  /// 播放中保持屏幕常亮（窗口 FLAG_KEEP_SCREEN_ON）。失败只吞不抛：保屏是
+  /// 体验增强，不能影响播放链路；与全页播放器共用同一窗口标志位。
+  void _setKeepScreenOn(bool on) {
+    unawaited(NativePlayer.setKeepScreenOn(on).catchError((Object _) {}));
+  }
+
   Future<void> activate(MediaItem series) async {
     if (_disposed) return;
     final generation = ++_generation;
@@ -234,6 +240,7 @@ class InlineVideoPlayback {
     _hasDisplayed = false;
     _wantsPlay = true;
     _reusedFromPool = false;
+    _setKeepScreenOn(true);
     activeId.value = series.id;
     firstFrame.value = false;
     error.value = null;
@@ -498,6 +505,8 @@ class InlineVideoPlayback {
   Future<void> pause() async {
     if (_disposed) return;
     _wantsPlay = false;
+    // 暂停即不再需要屏幕常亮（用户暂停观看时允许系统正常息屏）。
+    _setKeepScreenOn(false);
     final player = _player;
     if (player == null || !player.isCreated) {
       playing.value = false;
@@ -524,6 +533,7 @@ class InlineVideoPlayback {
     _wantsPlay = true;
     final player = _player;
     if (player == null || !player.isCreated || error.value != null) return;
+    _setKeepScreenOn(true);
     final generation = _generation;
     try {
       await player.play();
@@ -629,6 +639,7 @@ class InlineVideoPlayback {
     error.value = null;
     position.value = Duration.zero;
     duration.value = Duration.zero;
+    _setKeepScreenOn(false);
     _parkCurrent();
   }
 
@@ -809,6 +820,7 @@ class InlineVideoPlayback {
   /// This is the destructive path: [release] parks a player instead, and only
   /// this method (via [disposePlayer], [dispose] and [_fail]) actually frees one.
   Future<void> _teardown() {
+    _setKeepScreenOn(false);
     final old = _player;
     _player = null;
     _episodes = const [];
