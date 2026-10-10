@@ -176,6 +176,16 @@ Future<void> _flush(WidgetTester tester) async {
 late Directory _hiveDir;
 
 void main() {
+  // InlineVideoPlayback 播放中会调 setKeepScreenOn；没有 handler 时它留一个
+  // 10s 的超时定时器，触发测试框架的 timersPending 检查（player_page_test
+  // 同款）。个别用例自带更完整的 handler 会覆盖这里的空应答。
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('fqapp/native_player'),
+          (call) async => null,
+        );
+  });
   // 本地列表和播放回归共用存储；开箱 I/O 保持在 fake-async 区外。
   setUp(() async {
     _hiveDir = await Directory.systemTemp.createTemp('fqapp-drama-test-');
