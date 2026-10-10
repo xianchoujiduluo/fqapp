@@ -242,6 +242,10 @@ class RootShell extends ConsumerStatefulWidget {
 }
 
 class _RootShellState extends ConsumerState<RootShell> {
+  /// 底部导航「短剧」的下标，与 destinations 声明顺序耦合（首页 0 / 短剧 1 /
+  /// 书架 2 / 我的 3）。改 destinations 顺序时必须同步这里。
+  static const _dramaNavIndex = 1;
+
   int _index = 0;
   bool _backendReady = false;
   String? _backendError;
@@ -443,7 +447,12 @@ class _RootShellState extends ConsumerState<RootShell> {
                           // 再次点击当前 tab：短剧页触发刷新（同官方底栏重复
                           // 点击语义）。seen 跨刷新保留，filter_ids 带上后
                           // 上游不会再回重复内容。
-                          if (i == dramaTabIndex) {
+                          //
+                          // ⚠️ 这里必须用**底部导航的下标**（首页 0 / 短剧 1 /
+                          // 书架 2 / 我的 3），与 dramaTabIndex（短剧页内部
+                          // 频道表的下标，值是 2）是两个不同的索引空间，
+                          // 混用会让「再点短剧」不触发、「再点书架」误触发。
+                          if (i == _dramaNavIndex) {
                             ref
                                 .read(dramaProvider.notifier)
                                 .load(manualRefresh: true);
