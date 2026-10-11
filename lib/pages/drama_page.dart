@@ -31,6 +31,7 @@ import '../widgets/player/playlet_more_panel.dart';
 import '../widgets/player/playlet_more_panel_light.dart';
 import '../widgets/player/playlet_quick_catalog_sheet.dart';
 import '../widgets/player/player_video_layout.dart';
+import 'drama_clean_page.dart';
 import 'detail_page.dart';
 import 'home_provider.dart';
 import 'player_page.dart';
@@ -707,6 +708,24 @@ class _DramaPageState extends ConsumerState<DramaPage>
     }
   }
 
+  /// 进入纯净模式：全屏竖滑切剧的极简页（复用同一份 feed 数据；返回时
+  /// `_pushOverFeed` 的 finally 会自动恢复本页播放）。
+  Future<void> _openCleanMode() {
+    return _pushOverFeed(() async {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => DramaCleanPage(
+            initialIndex: _screenIndex,
+            directoryLoader: widget.directoryLoader,
+            contentLoader: widget.contentLoader,
+            playerFactory: widget.playerFactory,
+            historyStore: widget.historyStore,
+          ),
+        ),
+      );
+    });
+  }
+
   /// 长按中带打开的更多面板。官方链路：`jq3/x` 的 onLongPress 命中 K6 中带
   /// 且 `y7()` 成功 → `br3.y` 路由 → 与全页播放页同一个 `oi3/k` 面板构建器
   /// （from = `show_more_panel_from_long_click`）。样式跟随
@@ -916,6 +935,7 @@ class _DramaPageState extends ConsumerState<DramaPage>
                   selected: _channel,
                   onSelect: _selectChannel,
                   onSearch: _openSearch,
+                  onCleanMode: _openCleanMode,
                   // 官方浅色页（看剧/漫剧）的顶栏换浅肤：深色字 + 浅灰搜索框。
                   light: lightPage,
                 ),
@@ -1106,7 +1126,7 @@ class _DramaPageState extends ConsumerState<DramaPage>
             opening: _openingId == item.id,
             playback: onScreen ? _inline : null,
             video: onScreen
-                ? _InlineVideoLayer(item: item, playback: _inline)
+                ? InlineVideoLayer(item: item, playback: _inline)
                 : null,
             errorOverlay: onScreen
                 ? _InlineVideoError(
@@ -1323,6 +1343,9 @@ class _TopBar extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final VoidCallback onSearch;
 
+  /// 进入纯净模式（频道条右端第二枚图标）。
+  final VoidCallback onCleanMode;
+
   /// 官方浅色页（漫剧）的顶栏浅肤：深色字、浅灰搜索框。默认 false =
   /// 黑底视频流的浅色字顶栏（书城/短剧语境）。
   final bool light;
@@ -1332,6 +1355,7 @@ class _TopBar extends StatelessWidget {
     required this.selected,
     required this.onSelect,
     required this.onSearch,
+    required this.onCleanMode,
     this.light = false,
   });
 
@@ -1384,6 +1408,22 @@ class _TopBar extends StatelessWidget {
                 // `Of(...)` → `openBookSearchActivity`）。它**不是刷新按钮**：
                 // 官方刷新是下拉手势（频道页 `aq0.xml` 的
                 // `PullToRefreshDetectLayout` ＋「下拉刷新内容」`@string/dhk`）。
+                // 频道条右端第二枚图标：进入纯净模式（全屏竖滑切剧、只留
+                // 下载/评论/收藏与底部详情条的极简页面）。
+                IconButton(
+                  key: const Key('drama_strip_clean_mode_button'),
+                  tooltip: '纯净模式',
+                  onPressed: onCleanMode,
+                  iconSize: 20,
+                  color: light ? const Color(0xFF1B1B1B) : Colors.white,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 20,
+                    height: 20,
+                  ),
+                  icon: const Icon(LucideIcons.maximize_2),
+                ),
+                const SizedBox(width: 12),
                 IconButton(
                   key: const Key('drama_strip_search_button'),
                   tooltip: '搜索短剧',
@@ -2813,11 +2853,11 @@ class _PullRefreshHint extends StatelessWidget {
 /// width and letterboxes (`:201-226`). The cover stays in front of the picture
 /// until the first frame really arrives — `create` completing only means a
 /// texture and decoder were allocated.
-class _InlineVideoLayer extends StatelessWidget {
+class InlineVideoLayer extends StatelessWidget {
   final MediaItem item;
   final InlineVideoPlayback playback;
 
-  const _InlineVideoLayer({required this.item, required this.playback});
+  const InlineVideoLayer({required this.item, required this.playback});
 
   @override
   Widget build(BuildContext context) {
