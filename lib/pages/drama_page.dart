@@ -1719,7 +1719,7 @@ class _DramaFeedCard extends StatelessWidget {
         if (playback != null)
           Positioned.fill(
             child: IgnorePointer(
-              child: _PlayPauseFeedback(playback: playback!),
+              child: PlayPauseFeedback(playback: playback!),
             ),
           ),
         // 官方进度条（`cjt.xml`）：整条高 16dp、轨道 1.0dip、滑块 1.5dip，
@@ -1802,10 +1802,13 @@ class _DramaFeedCard extends StatelessWidget {
 }
 
 /// 居中播放/暂停瞬态微动效组件：当视频暂停时在画面中央呈现优雅的磨砂圆盘，播放时平滑淡出。
-class _PlayPauseFeedback extends StatelessWidget {
+class PlayPauseFeedback extends StatelessWidget {
   final InlineVideoPlayback playback;
 
-  const _PlayPauseFeedback({required this.playback});
+  const PlayPauseFeedback({
+    super.key,
+    required this.playback,
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -171,6 +171,11 @@ class _DramaCleanPageState extends ConsumerState<DramaCleanPage>
       return;
     }
     if (_inline.activeId.value == item.id) return;
+    // 先掐掉当前播放再切换：activate 内部的 park→pause 是异步的，快速滑动
+    // 时存在竞态窗口（新剧还在建播放器，旧剧的声音继续走，表现为「滑到
+    // 下一部还在播上一部，点一下才切」）。这里同步先 pause 当前实例，
+    // 立刻消除声音/画面窗口；activate 自己会接着 park 旧实例。
+    unawaited(_inline.pause());
     unawaited(_inline.activate(item));
     final items = _visibleItems();
     final preheat = DramaPreheatPreferences.instance.count.value;
@@ -525,6 +530,14 @@ class _CleanFeedCard extends StatelessWidget {
             onTap: onTogglePlay,
           ),
         ),
+        // 居中播放/暂停反馈（与短剧页同款）：暂停时磨砂圆盘 + 播放图标，
+        // 否则分不清「暂停了」还是「卡了」。
+        if (playback != null)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: PlayPauseFeedback(playback: playback!),
+            ),
+          ),
         // 右侧竖排：下载 / 评论 / 收藏。
         Positioned(
           right: 12,
