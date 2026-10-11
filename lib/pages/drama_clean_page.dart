@@ -336,12 +336,24 @@ class _DramaCleanPageState extends ConsumerState<DramaCleanPage>
             else
               NotificationListener<ScrollNotification>(
                 onNotification: (notification) {
-                  // 拖动进行中不切播（与短剧页「Only after the drag settles」
-                  // 同一语义），松手结算时 onPageChanged 已触发过 _syncInline。
+                  if (notification.depth != 0) return false;
+                  // 与短剧页 _onFeedScroll 同一套结算链路：
+                  // - 拖动开始立刻暂停当前播放（滑动期间上一部必须安静；
+                  //   onPageChanged 在过半时就触发但那时 _paging 仍为 true，
+                  //   切播被正确推迟）；
+                  // - 拖动结算（ScrollEnd）：滑回同一张卡只恢复播放，落到
+                  //   别的卡才切播。此前这里只维护 _paging 不做结算，导致
+                  //   「滑到下一部还在播上一部，点一下屏幕才切」。
                   if (notification is ScrollStartNotification) {
                     _paging = true;
+                    unawaited(_inline.pause());
                   } else if (notification is ScrollEndNotification) {
                     _paging = false;
+                    if (_currentItem()?.id == _inline.activeId.value) {
+                      unawaited(_inline.resume());
+                    } else {
+                      _syncInline();
+                    }
                   }
                   return false;
                 },

@@ -345,6 +345,26 @@ class InlineVideoPlayback {
       textureId.value = player.textureId;
       _adoptVideoSize(player);
       rotation.value = player.videoRotationCorrection ~/ 90;
+      // 历史位置恢复：activate 只恢复了集数，位置一直从头——池内 park
+      // 掩盖了它（会话内滑回位置还在），但 disposePlayer 销毁重建（进
+      // 详情/全页播放器后返回）与冷启动续看都会触发「从头播」。与
+      // PlayerPage 的恢复语义对齐：仅当历史集 == 起播集且位置有效时
+      // seek；失败不阻断起播。
+      final rawSavedPosition = saved?['position'];
+      final savedPositionSec =
+          rawSavedPosition is num ? rawSavedPosition.toDouble() : 0.0;
+      final targetMs = (savedPositionSec * 1000).round();
+      final durationMs = player.duration.inMilliseconds;
+      if (index == (resumeEpisodeIndex(saved, episodes) ?? -1) &&
+          targetMs > 0 &&
+          (durationMs <= 0 || targetMs < durationMs)) {
+        try {
+          await player.seek(Duration(milliseconds: targetMs));
+          if (!_current(generation, player)) return;
+        } catch (_) {
+          // 恢复失败不阻断：从头播好过播不了。
+        }
+      }
       // A new player always starts unmuted at 1x; the viewer's own choices have
       // to be pushed back on it before the first frame shows.
       await _applyPlaybackPrefs(player);
