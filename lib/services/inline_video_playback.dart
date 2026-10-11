@@ -225,6 +225,31 @@ class InlineVideoPlayback {
     unawaited(NativePlayer.setKeepScreenOn(on).catchError((Object _) {}));
   }
 
+  /// 保活前台服务的当前目标（去重：同剧同播放态不重复下发）。
+  String? _keepAliveTitle;
+  bool? _keepAlivePlaying;
+
+  /// 短剧播放保活：有活跃短剧会话时挂 mediaPlayback 前台服务，把进程优先级
+  /// 提上去。切后台仍会暂停播放（不后台放音），但进程不被回收——返回时播放器
+  /// 实例与位置都还在，原位续播（否则冷启动重建、表现为「从头播」）。
+  void _updateDramaKeepAlive(bool playing) {
+    final series = _active;
+    if (series == null) return;
+    if (_keepAliveTitle == series.title && _keepAlivePlaying == playing) return;
+    _keepAliveTitle = series.title;
+    _keepAlivePlaying = playing;
+    unawaited(
+      NativePlayer.startDramaKeepAlive(title: series.title, playing: playing),
+    );
+  }
+
+  void _stopDramaKeepAlive() {
+    if (_keepAliveTitle == null) return;
+    _keepAliveTitle = null;
+    _keepAlivePlaying = null;
+    unawaited(NativePlayer.stopDramaKeepAlive());
+  }
+
   Future<void> activate(MediaItem series) async {
     if (_disposed) return;
     final generation = ++_generation;
@@ -242,6 +267,8 @@ class InlineVideoPlayback {
     _wantsPlay = true;
     _reusedFromPool = false;
     _setKeepScreenOn(true);
+    // 会话已建立：挂保活（即使还在建播放器，切后台也不该被回收）。
+    _updateDramaKeepAlive(true);
     activeId.value = series.id;
     firstFrame.value = false;
     error.value = null;
@@ -572,6 +599,8 @@ class InlineVideoPlayback {
       playing.value = false;
       return;
     }
+    // 保活服务不停（切后台暂停后进程仍需存活），只更新通知文案。
+    _updateDramaKeepAlive(false);
     await _persistProgress();
     // Saving progress can take longer than the interruption that asked for the
     // pause: a drag that ends, a tab that comes back or a route that pops sets
@@ -594,6 +623,7 @@ class InlineVideoPlayback {
     final player = _player;
     if (player == null || !player.isCreated || error.value != null) return;
     _setKeepScreenOn(true);
+    _updateDramaKeepAlive(true);
     final generation = _generation;
     try {
       await player.play();
@@ -700,6 +730,7 @@ class InlineVideoPlayback {
     position.value = Duration.zero;
     duration.value = Duration.zero;
     _setKeepScreenOn(false);
+    _stopDramaKeepAlive();
     _parkCurrent();
   }
 
@@ -710,6 +741,7 @@ class InlineVideoPlayback {
   /// (third…) ExoPlayer alive alongside the page's own.
   Future<void> disposePlayer() async {
     if (_disposed) return;
+    _stopDramaKeepAlive();
     final generation = ++_generation;
     // Capture the snapshot now, but stop native audio before waiting for the
     // history store. Grid/list navigation must not leave a hidden player live.
@@ -733,6 +765,7 @@ class InlineVideoPlayback {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    _stopDramaKeepAlive();
     ++_generation;
     await _persistProgress();
     await _teardown();

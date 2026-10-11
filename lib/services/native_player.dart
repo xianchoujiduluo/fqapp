@@ -362,6 +362,30 @@ class NativePlayer {
     }
   }
 
+  /// 短剧播放保活：有活跃短剧会话期间挂前台服务，切后台不被系统回收，
+  /// 返回时播放器实例与位置还在（原位续播）。不后台放音。
+  static Future<void> startDramaKeepAlive({
+    required String title,
+    bool playing = true,
+  }) async {
+    try {
+      await _channel.invokeMethod<void>('startDramaKeepAlive', {
+        'title': title,
+        'playing': playing,
+      });
+    } catch (_) {
+      // Best effort when channel/platform is unavailable or testing.
+    }
+  }
+
+  static Future<void> stopDramaKeepAlive() async {
+    try {
+      await _channel.invokeMethod<void>('stopDramaKeepAlive');
+    } catch (_) {
+      // Best effort when channel/platform is unavailable or testing.
+    }
+  }
+
   Future<void> dispose() => _disposeFuture ??= _dispose();
 
   Future<void> _dispose() async {

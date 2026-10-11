@@ -316,6 +316,42 @@ class NativePlayerPlugin internal constructor(
                 }
                 result.success(null)
             }
+            // 短剧播放保活：有活跃短剧会话期间挂 mediaPlayback 前台服务，
+            // 切后台不被系统回收，返回时播放器实例与位置还在（原位续播）。
+            "startDramaKeepAlive" -> {
+                val context = activity ?: flutterBinding.applicationContext
+                requestNotificationPermissionIfNeeded()
+                val intent = Intent(context, DramaKeepAliveService::class.java).apply {
+                    putExtra(
+                        DramaKeepAliveService.EXTRA_TITLE,
+                        call.argument<String>("title"),
+                    )
+                    putExtra(
+                        DramaKeepAliveService.EXTRA_PLAYING,
+                        call.argument<Boolean>("playing") ?: true,
+                    )
+                }
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
+                    result.success(null)
+                } catch (error: Throwable) {
+                    Log.w(TAG, "drama keepalive start failed", error)
+                    result.success(null)
+                }
+            }
+            "stopDramaKeepAlive" -> {
+                val context = activity ?: flutterBinding.applicationContext
+                try {
+                    context.stopService(Intent(context, DramaKeepAliveService::class.java))
+                } catch (error: Throwable) {
+                    Log.w(TAG, "drama keepalive stop failed", error)
+                }
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
     }

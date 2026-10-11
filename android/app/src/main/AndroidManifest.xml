@@ -34,6 +34,11 @@
             android:name=".ListenKeepAliveService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback"/>
+        <!-- 短剧播放保活（切后台不被系统回收，返回原位续播） -->
+        <service
+            android:name=".DramaKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
