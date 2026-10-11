@@ -82,7 +82,7 @@ class ReaderPreferences {
     this.pageMode = ReaderPageMode.paged,
     this.pageTurnStyle = ReaderPageTurnStyle.slide,
     this.volumeKeyTurn = false,
-    this.keepScreenOn = false,
+    this.keepScreenOn = true,
     this.autoTurnSeconds = 10,
     this.listeningFollow = true,
   });
@@ -211,7 +211,7 @@ class ReaderPreferences {
         orElse: () => ReaderPageTurnStyle.slide,
       ),
       volumeKeyTurn: _boolean(preferences, _volumeKeyTurnKey) ?? false,
-      keepScreenOn: _boolean(preferences, _keepScreenOnKey) ?? false,
+      keepScreenOn: _boolean(preferences, _keepScreenOnKey) ?? true,
       autoTurnSeconds:
           (_number(preferences, _autoTurnSecondsKey) ?? 10).round().clamp(3, 60),
       listeningFollow: _boolean(preferences, _listeningFollowKey) ?? true,
