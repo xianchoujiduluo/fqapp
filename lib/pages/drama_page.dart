@@ -577,7 +577,19 @@ class _DramaPageState extends ConsumerState<DramaPage>
   }
 
   void _selectChannel(int index) {
-    if (index == _channel) return;
+    if (index == _channel) {
+      // 重复点击当前频道：跳回该频道的第一支短剧（与底栏「再点短剧刷新」
+      // 同一交互家族）。平滑滚动到第 0 页，结算后 ScrollEnd 会驱动
+      // _syncInline 切播第一支；若列表为空则无事发生。
+      if (_screenIndex > 0 && _pages.hasClients) {
+        _pages.animateToPage(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      }
+      return;
+    }
     final channel = _channels[index];
     // 官方横向频道 pager 一滚动就收起引导（`onPageScrolled` → `pp3.f.m()`）；
     // 这里的等价动作是切频道。
