@@ -22,7 +22,7 @@ import '../widgets/player/playlet_danmaku_loader.dart';
 import 'drama_download_sheet.dart';
 import 'drama_page.dart';
 import 'home_provider.dart';
-import 'series_detail_page.dart';
+import 'player_page.dart';
 
 /// 短剧「纯净模式」：全屏竖滑切剧的独立页面。
 ///
@@ -31,7 +31,7 @@ import 'series_detail_page.dart';
 /// 语义销毁自己的播放器，返回时它会自行恢复）：
 /// - 无频道条/搜索条/引导层；左上角只有「退出」与「弹幕开关」；
 /// - 右侧竖排三按钮：下载 / 查看评论 / 收藏（本地书架，无账号同步）；
-/// - 底部整宽条「观看完整短剧 ›」→ 剧集详情页（[SeriesDetailPage]）；
+/// - 底部整宽条「观看完整短剧 ›」→ **直接进全页播放器**（不经过详情页）；
 /// - 弹幕保留：按当前播放剧集取数（接法参考播放页，去掉横屏/拖动补数等
 ///   播放页专属分支）。
 class DramaCleanPage extends ConsumerStatefulWidget {
@@ -288,17 +288,47 @@ class _DramaCleanPageState extends ConsumerState<DramaCleanPage>
     );
   }
 
-  Future<void> _openDetail(MediaItem item) async {
+  /// 底部条「观看完整短剧」：**直接进全页播放器**，不经过详情页。
+  /// 与短剧页 _openPlayer 同款链路：disposePlayer 已把当前集与进度写进
+  /// 历史，PlayerPage 从同一条历史续播（集数+位置）。
+  Future<void> _openPlayer(MediaItem item) async {
     final eps = await _episodesOf(item);
     if (!mounted) return;
+    if (eps.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('剧集列表暂时无法加载')),
+      );
+      return;
+    }
+    final contentId = item.seriesId ?? item.id;
+    final tab = item.kind == 'manju' ? '漫剧' : '短剧';
     await _pushOver(() async {
+      var index = 0;
+      try {
+        final saved = await PlayerHistory(
+          widget.historyStore ?? LibraryStore.instance,
+        ).load(contentId);
+        index = (resumeEpisodeIndex(saved, eps) ?? 0).clamp(0, eps.length - 1);
+      } catch (_) {
+        // 历史读不到从第 1 集播。
+      }
+      if (!mounted) return;
       await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => SeriesDetailPage(
-            seriesId: item.seriesId ?? item.id,
+        MaterialPageRoute<void>(
+          builder: (_) => PlayerPage(
+            bookId: contentId,
+            kind: item.kind,
             title: item.title,
             cover: item.cover,
-            episodes: eps,
+            eps: eps,
+            startIndex: index,
+            contentLoader: widget.contentLoader == null
+                ? null
+                : (episode) => widget.contentLoader!(episode.itemId, tab),
+            playerFactory: widget.playerFactory,
+            historyStore: widget.historyStore,
+            shortSeries: true,
+            aiGenerated: item.aiGenerated,
           ),
         ),
       );
@@ -391,7 +421,7 @@ class _DramaCleanPageState extends ConsumerState<DramaCleanPage>
                       },
                       onDownload: () => unawaited(_openDownload(item)),
                       onComments: () => unawaited(_openComments(item)),
-                      onDetail: () => unawaited(_openDetail(item)),
+                      onDetail: () => unawaited(_openPlayer(item)),
                     );
                   },
                 ),
