@@ -202,7 +202,6 @@ class _DramaCleanPageState extends ConsumerState<DramaCleanPage>
     // feed 卡是整剧，先解析目录、按历史推断当前集，再取该集弹幕。
     // best-effort：失败只是没有弹幕，不影响播放。
     final contentId = item.seriesId ?? item.id;
-    final tab = item.kind == 'manju' ? '漫剧' : '短剧';
     unawaited(() async {
       try {
         final eps = await _episodesOf(item);
@@ -579,7 +578,7 @@ class _CleanActions extends StatelessWidget {
         const SizedBox(height: 18),
         ValueListenableBuilder<int>(
           valueListenable: ShelfStore.instance.listenable,
-          builder: (context, _, __) {
+          builder: (context, _, _) {
             final saved = ShelfStore.instance.containsItem(item);
             return _ActionButton(
               icon: saved

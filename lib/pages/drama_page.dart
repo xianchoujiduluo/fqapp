@@ -2857,7 +2857,11 @@ class InlineVideoLayer extends StatelessWidget {
   final MediaItem item;
   final InlineVideoPlayback playback;
 
-  const InlineVideoLayer({required this.item, required this.playback});
+  const InlineVideoLayer({
+    super.key,
+    required this.item,
+    required this.playback,
+  });
 
   @override
   Widget build(BuildContext context) {
