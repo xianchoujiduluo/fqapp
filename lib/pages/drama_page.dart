@@ -13,6 +13,7 @@ import '../models/playlet_comment.dart';
 import '../models/series_detail.dart';
 import '../services/api_client.dart';
 import '../services/drama_mute_preferences.dart';
+import '../services/drama_preheat_preferences.dart';
 import '../services/inline_video_playback.dart';
 
 import '../services/library_store.dart';
@@ -327,6 +328,8 @@ class _DramaPageState extends ConsumerState<DramaPage>
     // 预载冷启动静音设置（`_applyPlaybackPrefs` 在会话首卡建播放器时读取；
     // 官方 `video/l.java` 的 `e()`→`g()`，默认 false＝有声起播）。
     unawaited(DramaMutePreferences.instance.load());
+    // 预加载部数（0–5）：决定接下来几部预热到什么程度。
+    unawaited(DramaPreheatPreferences.instance.load());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 首帧只加载**当前选中频道**的订阅流。provider 出厂停在
       // tabIndex=2（看剧＝tab_type 8），而默认频道是推荐（tabIndex=6＝
@@ -562,8 +565,13 @@ class _DramaPageState extends ConsumerState<DramaPage>
     if (_inline.activeId.value == item.id) return;
     unawaited(_inline.activate(item));
     final items = _visibleItems(ref.read(dramaProvider));
-    if (widget.directoryLoader == null && _screenIndex + 1 < items.length) {
-      unawaited(_inline.prefetchNextDrama(items[_screenIndex + 1]));
+    if (widget.directoryLoader == null) {
+      // 预加载接下来 N 部（用户可配 0–5，默认 2）：新剧预热到「可秒播」
+      // 状态，有历史的剧只预取地址（保留续看语义）。
+      final preheat = DramaPreheatPreferences.instance.count.value;
+      for (var i = 1; i <= preheat && _screenIndex + i < items.length; i++) {
+        _inline.preheatDrama(items[_screenIndex + i]);
+      }
     }
   }
 

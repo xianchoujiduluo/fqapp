@@ -22,6 +22,7 @@ import 'services/backend_service.dart';
 import 'services/digg_store.dart';
 import 'services/drama_download_store.dart';
 import 'services/drama_downloader.dart';
+import 'services/drama_preheat_preferences.dart';
 import 'services/connectivity_status.dart';
 import 'services/home_feed_cache.dart';
 import 'services/library_store.dart';
@@ -103,6 +104,8 @@ Future<void> _initializeLocalData() async {
   await ShortSeriesFontScale.load();
   // 听书后台播放开关：异步读取 SharedPreferences，失败退化为默认开启。
   unawaited(AudioPreferences.instance.load());
+  // 短剧预加载部数：决定共享播放池容量（构造时同步读取），启动即加载。
+  unawaited(DramaPreheatPreferences.instance.load());
   // 离线缓存的记录箱启动即打开：播放器的离线命中只在 box 就绪时才查
   // （避免运行中途首次 openBox 失败产生游离异步错误）。可选数据，失败
   // 只退化为「本会话不查离线」。

@@ -10,6 +10,7 @@ import '../services/app_theme.dart';
 import '../services/audio_preferences.dart';
 import '../services/backend_service.dart';
 import '../services/drama_mute_preferences.dart';
+import '../services/drama_preheat_preferences.dart';
 import '../services/library_store.dart';
 import '../widgets/home/home_design.dart';
 import 'about_page.dart';
@@ -43,7 +44,7 @@ class SettingsPage extends StatelessWidget {
         icon: LucideIcons.film,
         title: '短剧',
         subtitle: '播放',
-        items: [_muteWhenColdStartItem()],
+        items: [_muteWhenColdStartItem(), _preheatCountItem()],
       ),
       SettingsCategory(
         icon: LucideIcons.database,
@@ -315,6 +316,39 @@ class SettingsPage extends StatelessWidget {
       unawaited(DramaMutePreferences.instance.set(!current));
     },
   );
+
+  /// 预加载部数（0–5，默认 2）：接下来 N 部提前缓冲到「刷到即播」，
+  /// 有观看历史的剧只预取地址保留续看语义。每个驻留播放器约占几十 MB
+  /// 内存，低端机建议调低。
+  SettingsItem _preheatCountItem() => SettingsItem(
+    icon: LucideIcons.zap,
+    title: '短剧预加载',
+    subtitle: '提前缓冲接下来 N 部，刷到即播；每部约占几十 MB 内存',
+    trailingBuilder: (context) => ValueListenableBuilder<int>(
+      valueListenable: DramaPreheatPreferences.instance.count,
+      builder: (context, value, _) => Text(value == 0 ? '关闭' : '$value 部'),
+    ),
+    onTap: (context, setState) => unawaited(_pickPreheatCount(context)),
+  );
+
+  Future<void> _pickPreheatCount(BuildContext context) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('预加载部数'),
+        children: [
+          for (var n = 0; n <= DramaPreheatPreferences.maxCount; n++)
+            ListTile(
+              title: Text(n == 0 ? '关闭（刷到才加载）' : '接下来 $n 部'),
+              onTap: () {
+                unawaited(DramaPreheatPreferences.instance.set(n));
+                Navigator.pop(dialogContext);
+              },
+            ),
+        ],
+      ),
+    );
+  }
 
   // ── 数据 ──────────────────────────────────────────────────────────────
 

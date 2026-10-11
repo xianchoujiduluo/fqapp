@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import '../models/media_item.dart';
 import 'api_client.dart';
 import 'drama_mute_preferences.dart';
+import 'drama_preheat_preferences.dart';
 import 'episode_source_cache.dart';
 import 'library_store.dart';
 import 'native_player.dart';
@@ -39,7 +40,7 @@ class InlineVideoPlayback {
     EpisodeSourceCache? sources,
     this.historyStore,
     PlayerPool? pool,
-  }) : pool = pool ?? PlayerPool() {
+  }) : pool = pool ?? PlayerPool(capacity: DramaPreheatPreferences.instance.poolCapacity) {
     // The address cache is page-local: it keeps {url,keyHex} for at most two
     // episodes with a two minute TTL and never downloads media bytes.
     _sources =
@@ -453,21 +454,60 @@ class InlineVideoPlayback {
     }
   }
 
-  /// Prefetches the directory and initial episode stream for [nextSeries] in the background.
-  Future<void> prefetchNextDrama(MediaItem nextSeries) async {
+  /// 预热队列：串行执行，避免同时开 N 条 CDN 连接抢带宽。
+  Future<void> _preheatChain = Future<void>.value();
+
+  /// 预加载一部（替代旧的仅预取地址的 prefetchNextDrama）：
+  ///
+  /// 1. 拉目录、解析首集地址（结果进地址缓存，这步对任何剧都做）；
+  /// 2. **没有观看历史的剧**再进一步：创建播放器（create 内含 prepare，
+  ///    即开始缓冲首段数据但不播放）停进共享池——刷到时 activate 走池内
+  ///    复用路径，近乎无缝起播；
+  /// 3. 有历史的剧会续看第 N 集，而预热固定装第 1 集，建了反而丢续看
+  ///    进度，所以那类只做第 1 步。
+  ///
+  /// 失败全部静默：预热是纯增益，刷到时 activate 自会按需重取。
+  void preheatDrama(MediaItem series) {
     if (_disposed) return;
-    final generation = _generation;
-    final contentId = nextSeries.seriesId ?? nextSeries.id;
-    final tab = nextSeries.kind == 'manju' ? '漫剧' : '短剧';
+    final key = _poolKey(series);
+    if (pool.peek(key) != null) return; // 已在池（回滑或刚预热过）
+    _preheatChain = _preheatChain.then<void>((_) => _preheatOne(series, key));
+  }
+
+  Future<void> _preheatOne(MediaItem series, String key) async {
+    if (_disposed || pool.peek(key) != null) return;
+    final contentId = series.seriesId ?? series.id;
+    final tab = series.kind == 'manju' ? '漫剧' : '短剧';
+    NativePlayer? candidate;
     try {
-      final episodes = await _episodesFor(contentId, tab, nextSeries);
-      if (_disposed || generation != _generation || episodes.isEmpty) return;
-      await _sources.prefetch(
-        episodes.first,
-        stillWanted: () => !_disposed && generation == _generation,
-      );
+      final episodes = await _episodesFor(contentId, tab, series);
+      if (_disposed || episodes.isEmpty || pool.peek(key) != null) return;
+      // 地址请求本身就是预热的第一层：结果进 _sources 缓存。
+      final source = await _sources.request(episodes.first).future;
+      if (_disposed || pool.peek(key) != null) return;
+      // 有观看历史的剧只预热到地址为止（见 preheatDrama 注释第 3 点）。
+      Map<String, dynamic>? saved;
+      try {
+        saved = await _history.load(contentId);
+      } catch (_) {
+        // 历史读不到按无历史处理（预热整部）。
+      }
+      final resumeIndex = saved == null ? 0 : (resumeEpisodeIndex(saved, episodes) ?? 0);
+      if (resumeIndex != 0) return;
+      if (_disposed || pool.peek(key) != null) return;
+      candidate = playerFactory?.call() ?? NativePlayer();
+      await candidate.create(source.url, source.keyHex);
+      final failure = candidate.lastError;
+      if (_disposed || failure != null) {
+        await candidate.dispose();
+        return;
+      }
+      final warmed = candidate;
+      candidate = null;
+      pool.park(key, warmed); // park 会 pause（本来就未播放）
     } catch (_) {
-      // Speculative prefetch errors are silent.
+      // 预热是纯增益：失败静默。
+      await candidate?.dispose();
     }
   }
 
