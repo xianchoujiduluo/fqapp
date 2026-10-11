@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
 
-import '../models/chapter.dart';
 import '../models/media_item.dart';
 import '../models/playlet_comment.dart';
 import '../services/api_client.dart';
@@ -15,12 +14,14 @@ import '../services/inline_video_playback.dart';
 import '../services/library_store.dart';
 import '../services/native_player.dart';
 import '../services/player_history.dart';
+import '../services/shelf_store.dart';
 import '../widgets/home/home_media_card.dart' show StoryCover;
 import '../widgets/player/playlet_comment_panel.dart';
 import '../widgets/player/playlet_danmaku_layer.dart';
 import '../widgets/player/playlet_danmaku_loader.dart';
 import 'drama_download_sheet.dart';
 import 'drama_page.dart';
+import 'home_provider.dart';
 import 'series_detail_page.dart';
 
 /// 短剧「纯净模式」：全屏竖滑切剧的独立页面。
@@ -49,7 +50,8 @@ class DramaCleanPage extends ConsumerStatefulWidget {
   // ── 与 DramaPage 同款的注入缝，测试与宿主复用 ──────────────────────
   final Future<List<List<Chapter>>> Function(String id, String tab)?
   directoryLoader;
-  final Future<Map<String, dynamic>> Function(String itemId)? contentLoader;
+  final Future<Map<String, dynamic>> Function(String itemId, String tab)?
+  contentLoader;
   final NativePlayer Function()? playerFactory;
   final ReaderStore? historyStore;
 
@@ -73,8 +75,21 @@ class _DramaCleanPageState extends ConsumerState<DramaCleanPage>
     onLoad: (page) {
       if (!mounted) return;
       final focus = _inline.position.value.inMilliseconds;
-      _danmaku.load(page, focusMs: focus);
-      setState(() => _danmakuEntries = _danmaku.entries);
+      setState(() {
+        final retention = _danmaku.load(page, focusMs: focus);
+        // 时间轴裁掉旧条目后要把窗口回灌给调度器，否则它会重复请求已被
+        // 丢弃的段（player_page 同款处理）。
+        if (retention.dropped) {
+          _danmakuLoader.noteRetainedRange(
+            minOffsetMs: retention.minOffsetMs,
+            maxOffsetMs: retention.maxOffsetMs,
+            droppedBehind: retention.droppedBehind,
+            droppedAhead: retention.droppedAhead,
+            emptied: retention.emptied,
+          );
+        }
+        _danmakuEntries = _danmaku.entries;
+      });
     },
   );
   BackendRequest? _danmakuFlight;
@@ -472,7 +487,13 @@ class _CleanFeedCard extends StatelessWidget {
         // 视频/封面层（与短剧页同款布局计算；无圆角——纯净模式全屏）。
         playback != null
             ? InlineVideoLayer(item: item, playback: playback!)
-            : StoryCover(item: item),
+            : StoryCover(
+                item: item,
+                cacheWidth:
+                    (MediaQuery.sizeOf(context).width *
+                            MediaQuery.devicePixelRatioOf(context))
+                        .ceil(),
+              ),
         // 底部渐变（信息可读性）。
         const Positioned(
           left: 0,
