@@ -1381,7 +1381,26 @@ class _TopBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               // 官方 `ap4.xml` 的搜索行 38dp、框体 36dp（`c5e.xml` `@dimen/zl`），
               // 垂直居中。
-              child: Center(child: _searchField(context, light: light)),
+              child: Row(
+                children: [
+                  Expanded(child: Center(child: _searchField(context, light: light))),
+                  // 纯净模式入口：搜索行右端（不占频道条宽度，避免挤窄频道
+                  // 标签的可点区域）。
+                  IconButton(
+                    key: const Key('drama_clean_mode_button'),
+                    tooltip: '纯净模式',
+                    onPressed: onCleanMode,
+                    iconSize: 20,
+                    color: light ? const Color(0xFF1B1B1B) : Colors.white,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 20,
+                      height: 20,
+                    ),
+                    icon: const Icon(LucideIcons.maximize_2),
+                  ),
+                ],
+              ),
             ),
           ),
 
@@ -1408,22 +1427,12 @@ class _TopBar extends StatelessWidget {
                 // `Of(...)` → `openBookSearchActivity`）。它**不是刷新按钮**：
                 // 官方刷新是下拉手势（频道页 `aq0.xml` 的
                 // `PullToRefreshDetectLayout` ＋「下拉刷新内容」`@string/dhk`）。
-                // 频道条右端第二枚图标：进入纯净模式（全屏竖滑切剧、只留
-                // 下载/评论/收藏与底部详情条的极简页面）。
-                IconButton(
-                  key: const Key('drama_strip_clean_mode_button'),
-                  tooltip: '纯净模式',
-                  onPressed: onCleanMode,
-                  iconSize: 20,
-                  color: light ? const Color(0xFF1B1B1B) : Colors.white,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 20,
-                    height: 20,
-                  ),
-                  icon: const Icon(LucideIcons.maximize_2),
-                ),
-                const SizedBox(width: 12),
+                // 官方 `ap3.xml` 的 `@id/h4f`：频道条右端一枚 20×20dp 图标，
+                // 右边距 16dp（`layout_marginEnd`），点击进搜索
+                // （`SeriesMallFragment.Xh()` 把 `clickEvent(this.i)` 接到
+                // `Of(...)` → `openBookSearchActivity`）。它**不是刷新按钮**：
+                // 官方刷新是下拉手势（频道页 `aq0.xml` 的
+                // `PullToRefreshDetectLayout` ＋「下拉刷新内容」`@string/dhk`）。
                 IconButton(
                   key: const Key('drama_strip_search_button'),
                   tooltip: '搜索短剧',
